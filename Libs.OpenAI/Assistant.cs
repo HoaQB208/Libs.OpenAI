@@ -24,31 +24,58 @@ namespace Libs.OpenAI
                 string threadCreated = string.Empty;
                 if (string.IsNullOrEmpty(threadId))
                 {
-                    threadId = await CreateThreadAndPostMessage(message);
-                    threadCreated = $"Thread created successfully, id={threadId}\n\n";
+                    var (id, error) = await CreateThreadAndPostMessage(message);
+                    if (string.IsNullOrEmpty(id))
+                    {
+                        return $"Error: Ask Assistant >> CreateThreadAndPostMessage\n{error}";
+                    }
+                    else
+                    {
+                        threadId = id;
+                        threadCreated = $"Thread created successfully, id={threadId}\n\n";
+                    }
                 }
-                else await PostMessage(threadId, message);
+                else
+                {
+                    string error = await PostMessage(threadId, message);
+                    if (!string.IsNullOrEmpty(error))
+                    {
+                        return $"Error: Ask Assistant >> PostMessage\n{error}";
+                    }
+                }
                 // Get Result
                 string lastMsg = await GetLastMessage(threadId);
                 return $"{threadCreated}{lastMsg}";
             }
             catch (Exception ex)
             {
-                return $"Error: {ex.Message}";
+                return $"Error: Ask Assistant\n{ex.Message}";
             }
         }
 
-        private async Task<string> CreateThreadAndPostMessage(string message)
+        /// <summary>
+        /// CreateThreadAndPostMessage
+        /// </summary>
+        /// <param name="message"></param>
+        /// <returns>(threadId, string)</returns>
+        private async Task<(string, string)> CreateThreadAndPostMessage(string message)
         {
-            if (string.IsNullOrEmpty(_assistantId)) return "Error: AssistantId is empty!";
-            if (string.IsNullOrEmpty(message)) return "Error: Message is empty!";
-
-            using var httpClient = new HttpClient();
-            var url = $"https://api.openai.com/v1/threads/runs";
-            using var request = new HttpRequestMessage(HttpMethod.Post, url);
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _apiKey);
-            request.Headers.Add("OpenAI-Beta", "assistants=v2");
-            string jsonBody = @"{
+            if (string.IsNullOrEmpty(_assistantId))
+            {
+                return ("", "Error: AssistantId is empty!");
+            }
+            if (string.IsNullOrEmpty(message))
+            {
+                return ("", "Error: Message is empty!");
+            }
+            try
+            {
+                using var httpClient = new HttpClient();
+                var url = $"https://api.openai.com/v1/threads/runs";
+                using var request = new HttpRequestMessage(HttpMethod.Post, url);
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _apiKey);
+                request.Headers.Add("OpenAI-Beta", "assistants=v2");
+                string jsonBody = @"{
                                  ""assistant_id"": """ + _assistantId + @""",
                                  ""thread"": {
                                     ""messages"": [
@@ -60,12 +87,17 @@ namespace Libs.OpenAI
                                    }
                                  }";
 
-            request.Content = new StringContent(jsonBody, Encoding.UTF8, "application/json");
-            var response = await httpClient.SendAsync(request);
-            response.EnsureSuccessStatusCode(); // Ném lỗi nếu status không thành công
-            var content = await response.Content.ReadAsStringAsync();
-            var jsonNode = JsonNode.Parse(content);
-            return jsonNode?["thread_id"]?.ToString() ?? "";
+                request.Content = new StringContent(jsonBody, Encoding.UTF8, "application/json");
+                var response = await httpClient.SendAsync(request);
+                response.EnsureSuccessStatusCode(); // Ném lỗi nếu status không thành công
+                var content = await response.Content.ReadAsStringAsync();
+                var jsonNode = JsonNode.Parse(content);
+                return (jsonNode?["thread_id"]?.ToString() ?? "", "");
+            }
+            catch (Exception ex)
+            {
+                return ("", ex.Message);
+            }
         }
 
 
